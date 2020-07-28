@@ -25,6 +25,7 @@ use Pimcore\Bundle\DataHubBundle\Event\GraphQL\Model\MutationTypeEvent;
 use Pimcore\Bundle\DataHubBundle\Event\GraphQL\MutationEvents;
 use Pimcore\Bundle\DataHubBundle\GraphQL\FieldHelper\DataObjectFieldHelper;
 use Pimcore\Bundle\DataHubBundle\GraphQL\Service;
+use Pimcore\Bundle\DataHubBundle\GraphQL\Traits\IdentifierCheckTrait;
 use Pimcore\Bundle\DataHubBundle\GraphQL\Traits\PermissionInfoTrait;
 use Pimcore\Bundle\DataHubBundle\GraphQL\Traits\ServiceTrait;
 use Pimcore\Bundle\DataHubBundle\WorkspaceHelper;
@@ -45,6 +46,7 @@ class MutationType extends ObjectType
     use ServiceTrait;
 
     use PermissionInfoTrait;
+    use IdentifierCheckTrait;
 
     /** @var array */
     public static $documentElementTypes = null;
@@ -637,7 +639,8 @@ class MutationType extends ObjectType
                     $updateField = [
                         'type' => $updateResultType,
                         'args' => [
-                            'id' => ['type' => Type::nonNull(Type::int())],
+                            'id' => ['type' => Type::int()],
+                            'fullpath' => ['type' => Type::string()],
                             'defaultLanguage' => ['type' => Type::string()],
                             'omitMandatoryCheck' => ['type' => Type::boolean()],
                             'input' => ['type' => $inputType],
@@ -663,14 +666,21 @@ class MutationType extends ObjectType
                 $deleteField = [
                     'type' => $deleteResultType,
                     'args' => [
-                        'id' => ['type' => Type::nonNull(Type::int())],
+                        'id' => ['type' => Type::int()],
+                        'fullpath' => ['type' => Type::string()],
                     ], 'resolve' => static function ($value, $args, $context, ResolveInfo $info) use ($entity, $modelFactory, $me) {
                         try {
-                            $id = $args["id"];
                             /** @var $configuration Configuration */
                             $configuration = $context['configuration'];
-                            $className = 'Pimcore\\Model\\DataObject\\' . ucfirst($entity);
-                            $object = $className::getById($id);
+                            
+                            $object = $me->getObjectByEntityAndIdOrPath($entity, $args);
+
+                            if(!$object){
+                                return [
+                                    "success" => false,
+                                    "message" => "unable to delete object. Unknown id or fullpath"
+                                ];
+                            }
 
                             if (!$me->omitPermissionCheck && !WorkspaceHelper::checkPermission($object, "delete")) {
                                 return [
@@ -740,12 +750,18 @@ class MutationType extends ObjectType
     public
     function getUpdateObjectResolver($entity, $modelFactory, $processors, $localeService, $object = null, $omitPermissionCheck = false)
     {
-        return static function ($value, $args, $context, $info) use ($entity, $modelFactory, $processors, $localeService, $object, $omitPermissionCheck) {
+        $me = $this;
+        return static function ($value, $args, $context, $info) use ($entity, $modelFactory, $processors, $localeService, $object, $omitPermissionCheck, $me) {
             try {
                 if (!$object) {
-                    $className = 'Pimcore\\Model\\DataObject\\' . ucfirst($entity);
-                    $id = $args["id"];
-                    $object = $className::getById($id);
+                    $object = $me->getObjectByEntityAndIdOrPath($entity, $args);
+                }
+
+                if(!$object) {
+                    return [
+                        "success" => false,
+                        "message" => "unable to update object. Unknown id or fullpath"
+                    ];
                 }
 
                 if (!$omitPermissionCheck && !WorkspaceHelper::checkPermission($object, "update")) {
