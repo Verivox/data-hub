@@ -582,7 +582,7 @@ class MutationType extends ObjectType
                             $newInstance->setType($args["type"]);
                         }
 
-                        $resolver = $me->getUpdateObjectResolver($entity, $modelFactory, $processors, $localeService, $newInstance, $me->omitPermissionCheck);
+                        $resolver = $me->getUpdateObjectResolver($processors, $localeService, $newInstance, $me->omitPermissionCheck);
 
                         call_user_func_array($resolver, [$value, $args, $context, $info]);
 
@@ -644,7 +644,7 @@ class MutationType extends ObjectType
                             'defaultLanguage' => ['type' => Type::string()],
                             'omitMandatoryCheck' => ['type' => Type::boolean()],
                             'input' => ['type' => $inputType],
-                        ], 'resolve' => $this->getUpdateObjectResolver($entity, $modelFactory, $processors, $localeService, null, $this->omitPermissionCheck)
+                        ], 'resolve' => $this->getUpdateObjectResolver($processors, $localeService, null, $this->omitPermissionCheck)
                     ];
 
                     $config['fields'][$opName] = $updateField;
@@ -668,12 +668,12 @@ class MutationType extends ObjectType
                     'args' => [
                         'id' => ['type' => Type::int()],
                         'fullpath' => ['type' => Type::string()],
-                    ], 'resolve' => static function ($value, $args, $context, ResolveInfo $info) use ($entity, $modelFactory, $me) {
+                    ], 'resolve' => static function ($value, $args, $context, ResolveInfo $info) use ($me) {
                         try {
                             /** @var $configuration Configuration */
                             $configuration = $context['configuration'];
                             
-                            $object = $me->getObjectByEntityAndIdOrPath($entity, $args);
+                            $object = $me->getElementByTypeAndIdOrPath($args, 'object');
 
                             if(!$object){
                                 return [
@@ -739,8 +739,6 @@ class MutationType extends ObjectType
     }
 
     /**
-     * @param $entity
-     * @param $modelFactory
      * @param $processors
      * @param LocaleServiceInterface $localeService
      * @param null $object
@@ -748,13 +746,13 @@ class MutationType extends ObjectType
      * @return \Closure
      */
     public
-    function getUpdateObjectResolver($entity, $modelFactory, $processors, $localeService, $object = null, $omitPermissionCheck = false)
+    function getUpdateObjectResolver($processors, $localeService, $object = null, $omitPermissionCheck = false)
     {
         $me = $this;
-        return static function ($value, $args, $context, $info) use ($entity, $modelFactory, $processors, $localeService, $object, $omitPermissionCheck, $me) {
+        return static function ($value, $args, $context, $info) use ($processors, $localeService, $object, $omitPermissionCheck, $me) {
             try {
                 if (!$object) {
-                    $object = $me->getObjectByEntityAndIdOrPath($entity, $args);
+                    $object = $me->getElementByTypeAndIdOrPath($args, 'object');
                 }
 
                 if(!$object) {
@@ -948,13 +946,15 @@ class MutationType extends ObjectType
 
             $opName = 'updateAsset';
 
+            $me = $this;
             $updateField = [
                 'type' => $updateResultType,
                 'args' => [
-                    'id' => ['type' => Type::nonNull(Type::int())],
+                    'id' => ['type' => Type::int()],
+                    'fullpath' => ['type' => Type::string()],
                     'input' => $this->getGraphQlService()->getAssetTypeDefinition("asset_input"),
-                ], 'resolve' => static function ($value, $args, $context, ResolveInfo $info) {
-                    $element = Asset::getById($args["id"]);
+                ], 'resolve' => static function ($value, $args, $context, ResolveInfo $info) use ($me) {
+                    $element = $me->getElementByTypeAndIdOrPath($args, 'asset');
 
 
                     if (isset($args["input"])) {
@@ -1136,23 +1136,18 @@ class MutationType extends ObjectType
 
             $omitPermissionCheck = $this->omitPermissionCheck;
 
+            $me = $this;
             $updateField = [
                 'type' => $updateResultType,
                 'args' => [
-                    'id' => ['type' => Type::nonNull(Type::int())],
+                    'id' => ['type' => Type::int()],
+                    'fullpath' => ['type' => Type::string()],
                     'input' => ['type' => $inputType],
-                ], 'resolve' => static function ($value, $args, $context, ResolveInfo $info) use ($type, $omitPermissionCheck) {
+                ], 'resolve' => static function ($value, $args, $context, ResolveInfo $info) use ($type, $omitPermissionCheck, $me) {
                     try {
-                        $id = $args["id"];
                         /** @var $configuration Configuration */
                         $configuration = $context['configuration'];
-                        if ($type === "asset") {
-                            $element = Folder::getById($id);
-                        } else if ($type == "document") {
-                            $element = Document\Folder::getById($id);
-                        } else {
-                            $element = \Pimcore\Model\DataObject\Folder::getById($id);
-                        }
+                        $element = $me->getElementByTypeAndIdOrPath($args, $type);
 
                         if (!$omitPermissionCheck && !WorkspaceHelper::checkPermission($element, "update")) {
                             return [
@@ -1224,24 +1219,18 @@ class MutationType extends ObjectType
 
             $omitPermissionCheck = $this->omitPermissionCheck;
 
+            $me = $this;
             $deleteField = [
                 'type' => $deleteResultType,
                 'args' => [
-                    'id' => ['type' => Type::nonNull(Type::int())],
-                ], 'resolve' => static function ($value, $args, $context, ResolveInfo $info) use ($type, $omitPermissionCheck) {
+                    'id' => ['type' => Type::int()],
+                    'fullpath' => ['type' => Type::string()],
+                ], 'resolve' => static function ($value, $args, $context, ResolveInfo $info) use ($type, $omitPermissionCheck, $me) {
                     try {
                         $id = $args["id"];
                         /** @var $configuration Configuration */
                         $configuration = $context['configuration'];
-                        $element = null;
-
-                        if ($type == "asset") {
-                            $element = Asset::getById($id);
-                        } else if ($type == "document") {
-                            $element = Document::getById($id);
-                        } else if ($type == "object") {
-                            $element = DataObject::getById($id);
-                        }
+                        $element = $me->getElementByTypeAndIdOrPath($args, $type);
 
                         if (!$omitPermissionCheck && !WorkspaceHelper::checkPermission($element, "delete")) {
                             return [
@@ -1303,23 +1292,18 @@ class MutationType extends ObjectType
 
             $omitPermissionCheck = $this->omitPermissionCheck;
 
+            $me = $this;
             $deleteField = [
                 'type' => $deleteResultType,
                 'args' => [
-                    'id' => ['type' => Type::nonNull(Type::int())],
-                ], 'resolve' => static function ($value, $args, $context, ResolveInfo $info) use ($type, $omitPermissionCheck) {
+                    'id' => ['type' => Type::int()],
+                    'fullpath' => ['type' => Type::string()],
+                ], 'resolve' => static function ($value, $args, $context, ResolveInfo $info) use ($type, $omitPermissionCheck, $me) {
                     try {
                         $id = $args["id"];
                         /** @var $configuration Configuration */
                         $configuration = $context['configuration'];
-
-                        if ($type === "asset") {
-                            $element = Folder::getById($id);
-                        } else if ($type == "document") {
-                            $element = Document\Folder::getById($id);
-                        } else {
-                            $element = \Pimcore\Model\DataObject\Folder::getById($id);
-                        }
+                        $element = $me->getElementByTypeAndIdOrPath($args, $type);
 
                         if (!$omitPermissionCheck && !WorkspaceHelper::checkPermission($element, "delete")) {
                             return [
